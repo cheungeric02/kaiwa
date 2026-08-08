@@ -3,38 +3,53 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#33518C">
+<meta name="theme-color" content="#6750A4">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="application-name" content="会話">
 <script>try{var _t=localStorage.getItem("kaiwa_theme");if(_t)document.documentElement.setAttribute("data-theme",_t);}catch(e){}</script>
 <title>会話 — Japanese Speaking Partner</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <style>
+  /* Material 3 Expressive — color roles (names kept for back-compat with component rules) */
   :root{
-    --bg:#E9E9E3;--surface:#FBFBF8;--surface-2:#F1F1EC;--text:#1B1D24;--muted:#5E6270;
-    --border:#D7D7CF;--accent:#33518C;--accent-soft:rgba(51,81,140,.12);--accent-ink:#33518C;
-    --gold:#A9762A;--gold-soft:rgba(169,118,42,.12);--good:#4C7A4C;--good-soft:rgba(76,122,76,.14);
-    --err:#B5493C;
-    --shadow:0 1px 2px rgba(20,22,30,.05),0 8px 28px rgba(20,22,30,.07);
+    --bg:#FEF7FF;--surface:#F7F2FA;--surface-2:#ECE6F0;--text:#1D1B20;--muted:#49454F;
+    --border:#CAC4D0;--accent:#6750A4;--accent-soft:rgba(103,80,164,.12);--accent-ink:#5A3FA0;
+    --on-primary:#FFFFFF;--primary-container:#EADDFF;--on-primary-container:#21005D;
+    --secondary-container:#E8DEF8;--tertiary-container:#FFD8E4;
+    --gold:#8E4A5E;--gold-soft:rgba(142,74,94,.12);--good:#3F6D3F;--good-soft:rgba(63,109,63,.14);
+    --err:#BA1A1A;--rec:#E5484D;
+    --shadow:0 1px 3px rgba(0,0,0,.08),0 6px 18px rgba(0,0,0,.09);
     --jp:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic","YuGothic","Meiryo","Noto Sans JP","MS PGothic",sans-serif;
-    --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;
+    --ui:"Google Sans","Product Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,Roboto,sans-serif;
   }
   @media (prefers-color-scheme:dark){:root{
-    --bg:#14151A;--surface:#1E2029;--surface-2:#262933;--text:#E9E9ED;--muted:#9BA0AE;
-    --border:#31343F;--accent:#8AA6E0;--accent-soft:rgba(138,166,224,.16);--accent-ink:#AEC2EC;
-    --gold:#D4A44E;--gold-soft:rgba(212,164,78,.16);--good:#84AC6C;--good-soft:rgba(132,172,108,.18);
-    --err:#E0796B;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+    --bg:#141218;--surface:#1D1B20;--surface-2:#2B2930;--text:#E6E0E9;--muted:#CAC4D0;
+    --border:#49454F;--accent:#D0BCFF;--accent-soft:rgba(208,188,255,.16);--accent-ink:#D0BCFF;
+    --on-primary:#381E72;--primary-container:#4F378B;--on-primary-container:#EADDFF;
+    --secondary-container:#4A4458;--tertiary-container:#633B48;
+    --gold:#FFB1C8;--gold-soft:rgba(255,177,200,.16);--good:#A6D28A;--good-soft:rgba(166,210,138,.18);
+    --err:#FFB4AB;--rec:#E5484D;
+    --shadow:0 1px 3px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.45);
   }}
   :root[data-theme="dark"]{
-    --bg:#14151A;--surface:#1E2029;--surface-2:#262933;--text:#E9E9ED;--muted:#9BA0AE;
-    --border:#31343F;--accent:#8AA6E0;--accent-soft:rgba(138,166,224,.16);--accent-ink:#AEC2EC;
-    --gold:#D4A44E;--gold-soft:rgba(212,164,78,.16);--good:#84AC6C;--good-soft:rgba(132,172,108,.18);
-    --err:#E0796B;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.35);
+    --bg:#141218;--surface:#1D1B20;--surface-2:#2B2930;--text:#E6E0E9;--muted:#CAC4D0;
+    --border:#49454F;--accent:#D0BCFF;--accent-soft:rgba(208,188,255,.16);--accent-ink:#D0BCFF;
+    --on-primary:#381E72;--primary-container:#4F378B;--on-primary-container:#EADDFF;
+    --secondary-container:#4A4458;--tertiary-container:#633B48;
+    --gold:#FFB1C8;--gold-soft:rgba(255,177,200,.16);--good:#A6D28A;--good-soft:rgba(166,210,138,.18);
+    --err:#FFB4AB;--rec:#E5484D;
+    --shadow:0 1px 3px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.45);
   }
   :root[data-theme="light"]{
-    --bg:#E9E9E3;--surface:#FBFBF8;--surface-2:#F1F1EC;--text:#1B1D24;--muted:#5E6270;
-    --border:#D7D7CF;--accent:#33518C;--accent-soft:rgba(51,81,140,.12);--accent-ink:#33518C;
-    --gold:#A9762A;--gold-soft:rgba(169,118,42,.12);--good:#4C7A4C;--good-soft:rgba(76,122,76,.14);
-    --err:#B5493C;--shadow:0 1px 2px rgba(20,22,30,.05),0 8px 28px rgba(20,22,30,.07);
+    --bg:#FEF7FF;--surface:#F7F2FA;--surface-2:#ECE6F0;--text:#1D1B20;--muted:#49454F;
+    --border:#CAC4D0;--accent:#6750A4;--accent-soft:rgba(103,80,164,.12);--accent-ink:#5A3FA0;
+    --on-primary:#FFFFFF;--primary-container:#EADDFF;--on-primary-container:#21005D;
+    --secondary-container:#E8DEF8;--tertiary-container:#FFD8E4;
+    --gold:#8E4A5E;--gold-soft:rgba(142,74,94,.12);--good:#3F6D3F;--good-soft:rgba(63,109,63,.14);
+    --err:#BA1A1A;--rec:#E5484D;
+    --shadow:0 1px 3px rgba(0,0,0,.08),0 6px 18px rgba(0,0,0,.09);
   }
   *{box-sizing:border-box}
   html{-webkit-text-size-adjust:100%}
@@ -178,7 +193,72 @@
   .seg button{flex:1;padding:8px;border:1px solid var(--border);background:var(--surface-2);color:var(--muted);
     border-radius:9px;cursor:pointer;font-size:.82rem;}
   .seg button.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink);font-weight:600;}
-  input[type=range]{width:100%;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+
+  /* ============================ Material 3 Expressive layer ============================ */
+  body{background:var(--bg);}
+  ::selection{background:var(--accent-soft);}
+  .appbar{border-bottom:none;background:var(--bg);padding:14px 16px 8px;}
+  .brand h1{font-size:1.65rem;font-weight:800;letter-spacing:.005em;white-space:nowrap;flex-shrink:0;}
+  .brand .sub{font-weight:500;}
+  .bar-actions{gap:2px;}
+  @media (max-width:410px){ .brand .sub{display:none;} }
+  .ib{border:none;background:transparent;border-radius:16px;width:44px;height:44px;color:var(--muted);
+    transition:background .18s cubic-bezier(.2,0,0,1),color .18s,transform .12s cubic-bezier(.2,0,0,1);}
+  .ib:hover{background:var(--accent-soft);color:var(--accent-ink);}
+  .ib:active{transform:scale(.88);}
+  .ib.on{background:var(--secondary-container);color:var(--accent-ink);}
+
+  .bubble{border-radius:24px;font-size:1.18rem;box-shadow:none;}
+  .msg.ai .bubble{background:var(--surface-2);border:none;border-bottom-left-radius:8px;}
+  .msg.user .bubble{background:var(--primary-container);color:var(--on-primary-container);border-bottom-right-radius:8px;}
+  .msg.user .bubble ruby rt{color:var(--on-primary-container);opacity:.6;}
+  .mini{border:none;background:var(--surface-2);color:var(--muted);border-radius:999px;padding:6px 13px;transition:.15s;}
+  .mini:hover{background:var(--accent-soft);color:var(--accent-ink);}
+  .trans{border-radius:18px;background:var(--surface-2);border:none;}
+
+  .corr{border-radius:22px;border:none;background:var(--tertiary-container);}
+  .corr-why{background:var(--surface);border-radius:14px;}
+  .help-card{border-radius:24px;border:none;background:var(--secondary-container);}
+  .sys-note{border-radius:24px;border:none;background:var(--surface-2);box-shadow:none;}
+  .typing{font-style:normal;}
+
+  .composer{border-top:none;background:var(--bg);}
+  .composer textarea{background:var(--surface-2);border:none;border-radius:26px;padding:14px 18px;font-size:1.05rem;}
+  .composer textarea:focus{outline:2px solid var(--accent);outline-offset:-2px;}
+  .send{background:var(--accent);color:var(--on-primary);border-radius:18px;width:52px;height:52px;box-shadow:var(--shadow);transition:transform .12s cubic-bezier(.2,0,0,1),filter .15s;}
+  .send:hover{filter:brightness(1.06);} .send:active{transform:scale(.92);}
+
+  /* Expressive FAB: rounded-square at rest, morphs to a circle while listening */
+  .mic{width:80px;height:80px;border-radius:28px;background:var(--accent);color:var(--on-primary);
+    box-shadow:var(--shadow);transition:border-radius .28s cubic-bezier(.2,0,0,1),transform .12s cubic-bezier(.2,0,0,1),background .2s;}
+  .mic.listening{width:80px;height:80px;border-radius:50%;background:var(--rec);color:#fff;}
+
+  .chip{border:1px solid var(--border);background:transparent;border-radius:999px;padding:9px 16px;font-size:.82rem;
+    transition:background .15s,color .15s,border-color .15s,transform .12s;}
+  .chip:hover{background:var(--accent-soft);border-color:transparent;color:var(--accent-ink);}
+  .chip:active{transform:scale(.96);}
+  .chip.on,.modelChip.on{background:var(--secondary-container);border-color:transparent;color:var(--accent-ink);font-weight:600;}
+
+  .overlay{background:rgba(0,0,0,.4);backdrop-filter:blur(2px);}
+  .modal{border-radius:28px;border:none;background:var(--surface);padding:24px;}
+  .modal h2{font-weight:700;}
+  .modal label{font-weight:600;}
+  .modal input[type=text],.modal input[type=password],.modal select{border:none;background:var(--surface-2);border-radius:14px;}
+  .modal input[type=text]:focus,.modal input[type=password]:focus,.modal select:focus{outline:2px solid var(--accent);outline-offset:-2px;}
+  .btn{border-radius:999px;padding:11px 22px;font-weight:600;background:var(--accent);color:var(--on-primary);
+    transition:filter .15s,transform .12s cubic-bezier(.2,0,0,1);}
+  .btn:hover{filter:brightness(1.06);} .btn:active{transform:scale(.96);}
+  .btn.ghost{background:var(--surface-2);color:var(--text);border:none;}
+  .btn.danger{background:transparent;color:var(--err);border:1px solid var(--err);}
+  .status{border-radius:12px;}
+
+  .tiles{gap:10px;}
+  .tile{background:var(--surface-2);border:none;border-radius:20px;padding:14px 8px;}
+  .tile .n{color:var(--accent-ink);font-weight:800;}
+  .seg button{border:none;background:var(--surface-2);border-radius:999px;}
+  .seg button.active{background:var(--secondary-container);color:var(--accent-ink);}
+  .list-item{border:none;background:var(--surface-2);border-radius:16px;}
 </style>
 </head>
 <body>
@@ -851,6 +931,11 @@ ta.addEventListener("input",()=>{ ta.style.height="auto"; ta.style.height=Math.m
 ta.addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendFromInput(); } });
 // close overlays on backdrop tap
 [["setOverlay"],["progOverlay"],["helpOverlay"]].forEach(([id])=>{ $(id).addEventListener("click",e=>{ if(e.target===$(id)) $(id).classList.remove("show"); }); });
+
+// PWA: register the service worker so 会話 is installable (HTTPS only — inert on file://).
+if("serviceWorker" in navigator && location.protocol==="https:"){
+  window.addEventListener("load",()=>{ navigator.serviceWorker.register("sw.js").catch(()=>{}); });
+}
 
 render();
 </script>
