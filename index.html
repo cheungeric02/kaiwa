@@ -126,6 +126,7 @@
   .chip{appearance:none;border:1px solid var(--border);background:var(--surface-2);color:var(--text);
     font-size:.8rem;padding:6px 12px;border-radius:20px;cursor:pointer;font-family:var(--ui);}
   .chip:hover{border-color:var(--accent);color:var(--accent-ink);}
+  .chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink);font-weight:600;}
 
   /* Modal */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40;display:none;
@@ -208,9 +209,13 @@
       <code>cheungeric02.github.io</code> (HTTP referrer) so it only works from this app.
     </div>
     <label>Model</label>
-    <input type="text" id="model" placeholder="gemini-2.0-flash">
-    <div class="note">Free-tier friendly. Try <code>gemini-2.0-flash</code>; if it errors, try <code>gemini-2.5-flash</code> or <code>gemini-1.5-flash</code>.</div>
-    <div class="row" style="margin-top:10px"><button class="btn ghost" id="testBtn">🔌 Test connection</button></div>
+    <input type="text" id="model" placeholder="gemini-2.5-flash">
+    <div class="note">Google renames models often. Tap <b>List my models</b> to see exactly what your key supports right now, then tap one to select it.</div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn ghost" id="loadModels">📋 List my models</button>
+      <button class="btn ghost" id="testBtn">🔌 Test connection</button>
+    </div>
+    <div id="modelList" style="display:none;margin-top:8px"></div>
     <div class="status" id="testStatus" style="display:none"></div>
 
     <label>Speaking speed (text-to-speech)</label>
@@ -383,7 +388,7 @@ const SCHEMA = {
 
 async function callGemini(extraUser){
   const key = localStorage.getItem(LS.key);
-  const model = (localStorage.getItem(LS.model) || "gemini-2.0-flash").trim();
+  const model = (localStorage.getItem(LS.model) || "gemini-2.5-flash").trim();
   if(!key) throw new Error("NO_KEY");
   const contents = data.msgs.map(m=>({ role: m.role==="ai"?"model":"user", parts:[{text:m.ja}] }));
   if(extraUser) contents.push({ role:"user", parts:[{text:extraUser}] });
@@ -586,7 +591,7 @@ $("furiBtn").classList.toggle("on",showFuri);
 
 function openSettings(){
   $("apiKey").value=localStorage.getItem(LS.key)||"";
-  $("model").value=localStorage.getItem(LS.model)||"gemini-2.0-flash";
+  $("model").value=localStorage.getItem(LS.model)||"gemini-2.5-flash";
   $("ttsRate").value=ttsRate; $("autoSpeak").checked=autoSpeak; $("autoSend").checked=autoSend;
   $("syncKey").value=localStorage.getItem(LS.sync)||"";
   $("syncToggle").textContent = (window.__kaiwaCloud&&window.__kaiwaCloud.connected)?"Turn off":"Turn on";
@@ -596,15 +601,37 @@ $("setBtn").onclick=openSettings;
 $("setClose").onclick=()=>$("setOverlay").classList.remove("show");
 $("setSave").onclick=()=>{
   localStorage.setItem(LS.key, $("apiKey").value.trim());
-  localStorage.setItem(LS.model, $("model").value.trim()||"gemini-2.0-flash");
+  localStorage.setItem(LS.model, $("model").value.trim()||"gemini-2.5-flash");
   ttsRate=parseFloat($("ttsRate").value)||0.95; localStorage.setItem(LS.rate,ttsRate);
   autoSpeak=$("autoSpeak").checked; localStorage.setItem(LS.speak,autoSpeak?"1":"0");
   autoSend=$("autoSend").checked; localStorage.setItem(LS.autosend,autoSend?"1":"0");
   $("setOverlay").classList.remove("show"); render();
 };
+$("loadModels").onclick=async ()=>{
+  const key=$("apiKey").value.trim();
+  const box=$("modelList"); box.style.display="block";
+  if(!key){ box.innerHTML='<div class="status err">✗ Enter your API key first.</div>'; return; }
+  box.innerHTML='<div class="status">Loading the models your key can use…</div>';
+  try{
+    const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}&pageSize=200`);
+    if(!res.ok){ let m="HTTP "+res.status; try{ const j=await res.json(); if(j.error&&j.error.message) m=j.error.message; }catch(e){} box.innerHTML='<div class="status err">✗ '+esc(m)+'</div>'; return; }
+    const j=await res.json();
+    let models=(j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes("generateContent"))
+      .map(m=>(m.name||"").replace(/^models\//,"")).filter(n=>/gemini/i.test(n) && !/embedding|imagen|image|aqa|vision/i.test(n));
+    // good free-tier chat picks first (flash-lite, then flash), newest-ish first
+    const score=n=>(/flash-lite/i.test(n)?0:/flash/i.test(n)?1:/pro/i.test(n)?3:2);
+    models.sort((a,b)=> score(a)-score(b) || b.localeCompare(a));
+    if(!models.length){ box.innerHTML='<div class="status err">No chat models found for this key. Check the key at aistudio.google.com/apikey.</div>'; return; }
+    box.innerHTML='<div class="note" style="margin:0 0 6px">Tap a model to select it &nbsp;(⭐ = lighter on the free-tier limits):</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
+      models.map(n=>`<button type="button" class="chip modelChip${n===$("model").value?" on":""}" data-m="${esc(n)}">${/flash/i.test(n)?"⭐ ":""}${esc(n)}</button>`).join("")+
+      '</div>';
+    box.querySelectorAll('.modelChip').forEach(b=> b.onclick=()=>{ $("model").value=b.getAttribute("data-m"); box.querySelectorAll('.modelChip').forEach(x=>x.classList.remove('on')); b.classList.add('on'); });
+  }catch(e){ box.innerHTML='<div class="status err">✗ '+esc(e.message||e)+'</div>'; }
+};
 $("testBtn").onclick=async ()=>{
   const key=$("apiKey").value.trim();
-  const model=$("model").value.trim()||"gemini-2.0-flash";
+  const model=$("model").value.trim()||"gemini-2.5-flash";
   const st=$("testStatus"); st.style.display="block"; st.className="status"; st.textContent="Testing…";
   if(!key){ st.className="status err"; st.textContent="✗ Enter an API key first."; return; }
   $("testBtn").disabled=true;
