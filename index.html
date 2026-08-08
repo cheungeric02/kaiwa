@@ -115,10 +115,11 @@
   .send{width:46px;height:46px;border-radius:14px;border:none;background:var(--accent);color:#fff;
     font-size:1.15rem;cursor:pointer;flex-shrink:0;}
   .send:disabled{opacity:.4;cursor:default;}
-  .mic{width:56px;height:56px;border-radius:50%;border:none;background:var(--accent);color:#fff;
-    font-size:1.5rem;cursor:pointer;flex-shrink:0;box-shadow:0 4px 14px var(--accent-soft);
-    transition:.15s;display:flex;align-items:center;justify-content:center;}
-  .mic:active{transform:scale(.94);}
+  .mic{width:76px;height:76px;border-radius:50%;border:none;background:var(--accent);color:#fff;
+    font-size:2.2rem;cursor:pointer;flex-shrink:0;box-shadow:0 4px 16px var(--accent-soft);
+    transition:.12s;display:flex;align-items:center;justify-content:center;line-height:1;}
+  .mic:active{transform:scale(.93);}
+  .mic.listening{width:76px;height:76px;}
   .mic.listening{background:var(--err);animation:pulse 1.1s infinite;}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(181,73,60,.5);}70%{box-shadow:0 0 0 14px rgba(181,73,60,0);}100%{box-shadow:0 0 0 0 rgba(181,73,60,0);}}
   .hint{max-width:760px;margin:6px auto 0;font-size:.72rem;color:var(--muted);text-align:center;}
@@ -193,7 +194,7 @@
     <textarea id="input" rows="1" placeholder="話しかけてください… / type here" enterkeyhint="send"></textarea>
     <button class="send" id="sendBtn" title="Send">➤</button>
   </div>
-  <div class="hint" id="hint">Tap 🎤 and speak Japanese — or type. Replies are read aloud.</div>
+  <div class="hint" id="hint">Tap 🎤 to start, take your time (pauses are fine), then tap ⏹ when you're done — it won't cut you off. Or type.</div>
 </div>
 
 <!-- Settings modal -->
@@ -222,7 +223,6 @@
     <label>Speaking speed (text-to-speech)</label>
     <input type="range" id="ttsRate" min="0.6" max="1.15" step="0.05" value="0.95">
     <div class="switch"><input type="checkbox" id="autoSpeak" checked><label style="margin:0">Read replies aloud</label></div>
-    <div class="switch"><input type="checkbox" id="autoSend" checked><label style="margin:0">Auto-send after I finish speaking</label></div>
 
     <label>Cross-device sync key</label>
     <div class="row">
@@ -290,7 +290,6 @@ if(!data.stats) data.stats={days:[],totalMsgs:0,spokenSec:0};
 let showFuri = (localStorage.getItem(LS.furi) ?? "1") === "1";
 let ttsRate = parseFloat(localStorage.getItem(LS.rate) || "0.95");
 let autoSpeak = (localStorage.getItem(LS.speak) ?? "1") === "1";
-let autoSend  = (localStorage.getItem(LS.autosend) ?? "1") === "1";
 let busy = false, applyingRemote = false;
 
 /* ---- helpers ---- */
@@ -519,36 +518,58 @@ function speak(text){
   }catch(e){}
 }
 
-/* ============================ speech recognition ============================ */
+/* ============================ speech recognition — tap to start, tap to finish (never auto-stops) ============================ */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec=null, listening=false, recStart=0, finalText="";
+let rec=null, listening=false, wantListening=false, recStart=0, committedText="";
+function autoGrow(){ const ta=$("input"); ta.style.height="auto"; ta.style.height=Math.min(ta.scrollHeight,120)+"px"; }
+function setMicUI(on){
+  const b=$("micBtn");
+  b.classList.toggle("listening",on);
+  b.textContent = on ? "⏹" : "🎤";
+  b.setAttribute("title", on ? "Tap when you're done speaking" : "Tap to start speaking");
+}
 if(!SR){ $("micBtn").style.display="none"; $("hint").textContent="Your browser can't do voice input — type instead. (Try Chrome on Android.)"; }
 else {
-  rec=new SR(); rec.lang="ja-JP"; rec.interimResults=true; rec.maxAlternatives=1; rec.continuous=false;
-  rec.onstart=()=>{ listening=true; recStart=now(); finalText=""; $("micBtn").classList.add("listening"); $("micBtn").textContent="■"; };
+  rec=new SR(); rec.lang="ja-JP"; rec.interimResults=true; rec.maxAlternatives=1; rec.continuous=true;
+  rec.onstart=()=>{ listening=true; setMicUI(true); };
   rec.onresult=(e)=>{
     let interim="";
     for(let i=e.resultIndex;i<e.results.length;i++){
       const r=e.results[i];
-      if(r.isFinal) finalText+=r[0].transcript; else interim+=r[0].transcript;
+      if(r.isFinal) committedText+=r[0].transcript; else interim+=r[0].transcript;
     }
-    $("input").value = finalText + interim;
+    $("input").value = committedText + interim; autoGrow();
   };
-  rec.onerror=(e)=>{ if(e.error==="not-allowed") $("hint").textContent="Microphone blocked — allow mic access in your browser settings."; };
+  rec.onerror=(e)=>{
+    if(e.error==="not-allowed"||e.error==="service-not-allowed"){ wantListening=false; setMicUI(false); $("hint").textContent="Microphone blocked — allow mic access in your browser settings."; }
+    // 'no-speech' / 'network' / 'aborted' while you're thinking: onend will just resume listening
+  };
   rec.onend=()=>{
-    listening=false; $("micBtn").classList.remove("listening"); $("micBtn").textContent="🎤";
+    listening=false;
+    if(wantListening){
+      // The engine stopped on its own (a silence timeout) but you haven't tapped Stop — keep listening.
+      try{ rec.start(); }catch(e){ setTimeout(()=>{ if(wantListening){ try{ rec.start(); }catch(_){}} },250); }
+      return;
+    }
+    // You tapped Stop → finish and send whatever was captured.
+    setMicUI(false);
     const sec=(now()-recStart)/1000;
-    const text=(finalText||$("input").value).trim();
-    if(text && autoSend){ $("input").value=""; turn(text,{showUser:true, spokenSec:sec}); }
-    else if(text){ $("input").value=text; }
+    const text=($("input").value||committedText).trim();
+    committedText="";
+    if(text){ $("input").value=""; autoGrow(); turn(text,{showUser:true, spokenSec:sec}); }
   };
 }
 function toggleMic(){
   if(!rec) return;
-  if(listening){ rec.stop(); return; }
+  if(wantListening){            // currently listening → this tap means "I'm done"
+    wantListening=false;
+    try{ rec.stop(); }catch(e){ if(rec.onend) rec.onend(); }
+    return;
+  }
   if(!curKey()){ openSettings(); return; }
   try{ speechSynthesis.cancel(); }catch(e){}
-  try{ rec.start(); }catch(e){}
+  committedText=""; $("input").value=""; autoGrow(); recStart=now(); wantListening=true;
+  try{ rec.start(); }catch(e){ wantListening=false; setMicUI(false); }
 }
 
 /* ============================ progress / mistakes / history ============================ */
@@ -647,7 +668,7 @@ function applyProviderUI(p){
 }
 function openSettings(){
   const p=curProvider(); $("provider").value=p; applyProviderUI(p);
-  $("ttsRate").value=ttsRate; $("autoSpeak").checked=autoSpeak; $("autoSend").checked=autoSend;
+  $("ttsRate").value=ttsRate; $("autoSpeak").checked=autoSpeak;
   $("syncKey").value=localStorage.getItem(LS.sync)||"";
   $("syncToggle").textContent = (window.__kaiwaCloud&&window.__kaiwaCloud.connected)?"Turn off":"Turn on";
   $("setOverlay").classList.add("show");
@@ -662,7 +683,6 @@ $("setSave").onclick=()=>{
   localStorage.setItem(meta.modelLS, $("model").value.trim()||meta.defModel);
   ttsRate=parseFloat($("ttsRate").value)||0.95; localStorage.setItem(LS.rate,ttsRate);
   autoSpeak=$("autoSpeak").checked; localStorage.setItem(LS.speak,autoSpeak?"1":"0");
-  autoSend=$("autoSend").checked; localStorage.setItem(LS.autosend,autoSend?"1":"0");
   $("setOverlay").classList.remove("show"); render();
 };
 function renderModelChips(models, starRe){
