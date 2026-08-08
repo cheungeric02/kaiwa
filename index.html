@@ -210,6 +210,8 @@
     <label>Model</label>
     <input type="text" id="model" placeholder="gemini-2.0-flash">
     <div class="note">Free-tier friendly. Try <code>gemini-2.0-flash</code>; if it errors, try <code>gemini-2.5-flash</code> or <code>gemini-1.5-flash</code>.</div>
+    <div class="row" style="margin-top:10px"><button class="btn ghost" id="testBtn">🔌 Test connection</button></div>
+    <div class="status" id="testStatus" style="display:none"></div>
 
     <label>Speaking speed (text-to-speech)</label>
     <input type="range" id="ttsRate" min="0.6" max="1.15" step="0.05" value="0.95">
@@ -599,6 +601,26 @@ $("setSave").onclick=()=>{
   autoSpeak=$("autoSpeak").checked; localStorage.setItem(LS.speak,autoSpeak?"1":"0");
   autoSend=$("autoSend").checked; localStorage.setItem(LS.autosend,autoSend?"1":"0");
   $("setOverlay").classList.remove("show"); render();
+};
+$("testBtn").onclick=async ()=>{
+  const key=$("apiKey").value.trim();
+  const model=$("model").value.trim()||"gemini-2.0-flash";
+  const st=$("testStatus"); st.style.display="block"; st.className="status"; st.textContent="Testing…";
+  if(!key){ st.className="status err"; st.textContent="✗ Enter an API key first."; return; }
+  $("testBtn").disabled=true;
+  try{
+    const url=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+    const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{role:"user",parts:[{text:"Reply with just: OK"}]}]})});
+    if(!res.ok){
+      let m="HTTP "+res.status; try{ const j=await res.json(); if(j.error&&j.error.message) m=j.error.message; }catch(e){}
+      if(res.status===429){ st.className="status on"; st.textContent="✓ Key works — but you've hit the free-tier rate limit. Wait a moment."; }
+      else { st.className="status err"; st.textContent="✗ "+m; }
+      return;
+    }
+    await res.json();
+    st.className="status on"; st.textContent="✓ Connected! Key and model “"+model+"” work. Tap Save to keep them.";
+  }catch(e){ st.className="status err"; st.textContent="✗ Network error: "+(e.message||e); }
+  finally{ $("testBtn").disabled=false; }
 };
 $("syncToggle").onclick=()=>{
   const k=$("syncKey").value.trim();
