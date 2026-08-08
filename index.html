@@ -270,8 +270,8 @@ const LS = {
 };
 const PROVIDERS = {
   gemini: { label:"Google Gemini", keyLS:"kaiwa_gemini_key", modelLS:"kaiwa_model", defModel:"gemini-2.5-flash",
-    keyHint:"AIza…", getUrl:"https://aistudio.google.com/apikey",
-    note:"Key must start with <code>AIza</code>. Free, but Google's 2026 free tier is stingy — may rate-limit quickly." },
+    keyHint:"AQ… or AIza…", getUrl:"https://aistudio.google.com/apikey",
+    note:"New keys start with <code>AQ</code> (older <code>AIza</code> keys also work). Sent via the <code>x-goog-api-key</code> header. Free, but Google's 2026 free tier can rate-limit quickly." },
   openrouter: { label:"OpenRouter", keyLS:"kaiwa_or_key", modelLS:"kaiwa_or_model", defModel:"meta-llama/llama-3.3-70b-instruct:free",
     keyHint:"sk-or-…", getUrl:"https://openrouter.ai/keys",
     note:"No card needed. Use models ending in <code>:free</code>. ~50 messages/day (1,000/day if you ever add $10 credit). Qwen models are strong at Japanese." }
@@ -409,8 +409,8 @@ async function callGemini(extraUser){
     contents,
     generationConfig:{ temperature:0.85, responseMimeType:"application/json", responseSchema:SCHEMA }
   };
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
-  const res = await fetch(url,{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const res = await fetch(url,{ method:"POST", headers:{"Content-Type":"application/json","x-goog-api-key":key}, body:JSON.stringify(body) });
   if(!res.ok){
     let msg="HTTP "+res.status;
     try{ const j=await res.json(); if(j.error&&j.error.message) msg=j.error.message; }catch(e){}
@@ -690,7 +690,7 @@ $("loadModels").onclick=async ()=>{
       if(!models.length){ box.innerHTML='<div class="status err">No free models found. Check the key at openrouter.ai/keys.</div>'; return; }
       renderModelChips(models.slice(0,50), /qwen|llama/i);
     } else {
-      const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}&pageSize=200`);
+      const res=await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200",{ headers:{ "x-goog-api-key":key } });
       if(!res.ok){ let m="HTTP "+res.status; try{ const j=await res.json(); if(j.error&&j.error.message) m=j.error.message; }catch(e){} box.innerHTML='<div class="status err">✗ '+esc(m)+'</div>'; return; }
       const j=await res.json();
       let models=(j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes("generateContent"))
@@ -715,8 +715,8 @@ $("testBtn").onclick=async ()=>{
         headers:{ "Content-Type":"application/json","Authorization":"Bearer "+key,"HTTP-Referer":location.origin,"X-Title":"Kaiwa" },
         body:JSON.stringify({ model, messages:[{role:"user",content:"Reply with just: OK"}], max_tokens:5 }) });
     } else {
-      res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,{
-        method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{role:"user",parts:[{text:"Reply with just: OK"}]}]}) });
+      res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,{
+        method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":key},body:JSON.stringify({contents:[{role:"user",parts:[{text:"Reply with just: OK"}]}]}) });
     }
     if(!res.ok){
       let m="HTTP "+res.status; try{ const j=await res.json(); if(j.error&&j.error.message) m=j.error.message; }catch(e){}
