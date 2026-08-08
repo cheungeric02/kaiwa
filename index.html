@@ -96,6 +96,17 @@
     font-size:.82rem;color:var(--text);}
   .corr-why b{color:var(--gold);}
 
+  /* Help ("how do I say…?") card */
+  .help-card{align-self:center;max-width:94%;background:var(--accent-soft);border:1px solid var(--accent);
+    border-radius:14px;padding:11px 13px;}
+  .help-h{font-size:.78rem;color:var(--accent-ink);font-weight:600;margin-bottom:7px;}
+  .help-ask{color:var(--muted);font-weight:400;font-style:italic;}
+  .help-ja{font-family:var(--jp);font-size:1.18rem;line-height:1.7;}
+  .help-sub{font-size:.82rem;color:var(--muted);margin-top:2px;}
+  .help-sub.note-en{color:var(--text);}
+  .help-body.muted{color:var(--muted);font-style:italic;}
+  .help-tools{display:flex;gap:8px;margin-top:8px;}
+
   .sys-note{align-self:center;max-width:640px;background:var(--surface);border:1px dashed var(--border);
     border-radius:14px;padding:16px 18px;font-size:.9rem;color:var(--muted);text-align:left;box-shadow:var(--shadow);}
   .sys-note h3{margin:0 0 8px;color:var(--text);font-size:1rem;}
@@ -187,6 +198,7 @@
 <div class="composer">
   <div class="topic-row">
     <button class="chip" id="topicBtn">🎲 話題をください (give me a topic)</button>
+    <button class="chip" id="helpBtn">💬 How do I say…?</button>
     <button class="chip" id="newBtn">＋ 新しい会話 (new chat)</button>
   </div>
   <div class="composer-inner">
@@ -234,6 +246,20 @@
     <div style="margin-top:18px;display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn ghost" id="setSave">Save</button>
     </div>
+  </div>
+</div>
+
+<!-- Help ("how do I say…?") modal -->
+<div class="overlay" id="helpOverlay">
+  <div class="modal">
+    <button class="ib close" id="helpClose">✕</button>
+    <h2>💬 How do I say…?</h2>
+    <div class="note">Type in English what you're trying to say. I'll give you a natural Japanese way to say it that fits this conversation and your politeness level — it won't count as a turn or get corrected.</div>
+    <textarea id="helpInput" rows="3" placeholder="e.g. I want to say I went hiking last weekend but it rained" style="width:100%;margin-top:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:10px;padding:10px 12px;font-family:var(--ui);font-size:.95rem;resize:none;"></textarea>
+    <div style="margin-top:12px;display:flex;justify-content:flex-end;gap:8px;">
+      <button class="btn" id="helpGo">Get the Japanese</button>
+    </div>
+    <div class="status" id="helpStatus" style="display:none"></div>
   </div>
 </div>
 
@@ -306,6 +332,7 @@ function render(){
   else if(!data.msgs.length){ c.appendChild(welcomeCard()); }
 
   data.msgs.forEach((m,i)=>{
+    if(m.role==="help"){ c.appendChild(helpCard(m)); return; }
     const wrap=document.createElement("div"); wrap.className="msg "+(m.role==="ai"?"ai":"user");
     const b=document.createElement("div"); b.className="bubble";
     if(m.role==="ai") b.innerHTML = showFuri && m.fg ? ruby(m.fg) : esc(m.ja);
@@ -361,6 +388,25 @@ function welcomeCard(){
    Not sure what to say? Tap <b>🎲 話題をください</b> and I'll start us off with a topic.`;
   return d;
 }
+function helpCard(m){
+  const d=document.createElement("div"); d.className="help-card";
+  let h=`<div class="help-h">💬 How to say: <span class="help-ask">“${esc(m.ask||"")}”</span></div>`;
+  if(m.pending){ h+=`<div class="help-body muted">…thinking of a natural way to say it</div>`; }
+  else if(m.error){ h+=`<div class="help-body" style="color:var(--err)">⚠ ${esc(m.error)}</div>`; }
+  else {
+    h+=`<div class="help-ja">${showFuri&&m.fg?ruby(m.fg):esc(m.ja||"")}</div>`;
+    if(m.ro) h+=`<div class="help-sub">${esc(m.ro)}</div>`;
+    if(m.note) h+=`<div class="help-sub note-en">${esc(m.note)}</div>`;
+  }
+  d.innerHTML=h;
+  if(!m.pending && !m.error && m.ja){
+    const tools=document.createElement("div"); tools.className="help-tools";
+    const play=document.createElement("button"); play.className="mini"; play.textContent="🔊 listen"; play.onclick=()=>speak(m.ja);
+    const use=document.createElement("button"); use.className="mini"; use.textContent="↩ use this"; use.onclick=()=>{ $("input").value=m.ja; autoGrow(); $("input").focus(); };
+    tools.appendChild(play); tools.appendChild(use); d.appendChild(tools);
+  }
+  return d;
+}
 function showTyping(on){
   const c=$("chatInner"); let t=$("typingRow");
   if(on){ if(!t){ t=document.createElement("div"); t.id="typingRow"; t.className="typing"; t.textContent="かいわ is typing…"; c.appendChild(t);} }
@@ -405,7 +451,7 @@ async function callGemini(extraUser){
   const key = localStorage.getItem(LS.key);
   const model = (localStorage.getItem(LS.model) || "gemini-2.5-flash").trim();
   if(!key) throw new Error("NO_KEY");
-  const contents = data.msgs.map(m=>({ role: m.role==="ai"?"model":"user", parts:[{text:m.ja}] }));
+  const contents = data.msgs.filter(m=>m.role==="ai"||m.role==="user").map(m=>({ role: m.role==="ai"?"model":"user", parts:[{text:m.ja}] }));
   if(extraUser) contents.push({ role:"user", parts:[{text:extraUser}] });
   const body = {
     systemInstruction:{ parts:[{text:SYSTEM}] },
@@ -433,7 +479,7 @@ async function callOpenRouter(extraUser){
   const model = (localStorage.getItem(LS.ormodel) || PROVIDERS.openrouter.defModel).trim();
   if(!key) throw new Error("NO_KEY");
   const messages = [{ role:"system", content: SYSTEM + OR_JSON_HINT }];
-  data.msgs.forEach(m=> messages.push({ role: m.role==="ai"?"assistant":"user", content:m.ja }));
+  data.msgs.filter(m=>m.role==="ai"||m.role==="user").forEach(m=> messages.push({ role: m.role==="ai"?"assistant":"user", content:m.ja }));
   if(extraUser) messages.push({ role:"user", content:extraUser });
   const body = { model, messages, temperature:0.85, response_format:{type:"json_object"} };
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions",{
@@ -508,6 +554,26 @@ function sendFromInput(){
   turn(v,{showUser:true, spokenSec:0});
 }
 
+async function helpTranslate(englishText){
+  if(busy) return;
+  if(!curKey()){ openSettings(); return; }
+  busy=true; $("sendBtn").disabled=true;
+  const ask={ role:"help", ask:englishText, pending:true, ts:now() };
+  data.msgs.push(ask); render(); save();
+  const instruction = `[TEACHER HELP REQUEST — this is NOT me speaking Japanese. Do NOT correct it, do NOT continue the story, do NOT ask a follow-up.] I want to say the following but I don't know the Japanese. Give me ONE natural way to say it that fits our current conversation and keeps the same politeness register we've been using. English: "${englishText}". Put the Japanese in "reply" (plain, no furigana markup), fill "reply_furigana" ({漢字|かな} on every kanji), "reply_romaji", and set "reply_en" to a SHORT English note on nuance/usage (or just the meaning). Return an EMPTY "corrections" array.`;
+  try{
+    const obj = await callAI(instruction);
+    ask.pending=false;
+    ask.ja=obj.reply||""; ask.fg=obj.reply_furigana||""; ask.ro=obj.reply_romaji||""; ask.note=obj.reply_en||"";
+    render(); save();
+    if(autoSpeak) speak(ask.ja);
+  }catch(err){
+    ask.pending=false; ask.error=(err&&err.message)||String(err);
+    if(err&&err.message==="NO_KEY"){ data.msgs.pop(); openSettings(); }
+    render(); save();
+  }finally{ busy=false; $("sendBtn").disabled=false; }
+}
+
 /* ============================ text-to-speech ============================ */
 let jaVoice=null;
 function loadVoices(){ const vs=speechSynthesis.getVoices(); jaVoice=vs.find(v=>(v.lang||"").toLowerCase().startsWith("ja"))||null; }
@@ -524,7 +590,7 @@ function speak(text){
 
 /* ============================ speech recognition — tap to start, tap to finish (never auto-stops) ============================ */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec=null, listening=false, wantListening=false, recStart=0, committedText="";
+let rec=null, listening=false, wantListening=false, discardDictation=false, recStart=0, committedText="";
 function autoGrow(){ const ta=$("input"); ta.style.height="auto"; ta.style.height=Math.min(ta.scrollHeight,120)+"px"; }
 function setMicUI(on){
   const b=$("micBtn");
@@ -555,13 +621,18 @@ else {
       try{ rec.start(); }catch(e){ setTimeout(()=>{ if(wantListening){ try{ rec.start(); }catch(_){}} },250); }
       return;
     }
-    // You tapped Stop → finish and send whatever was captured.
     setMicUI(false);
+    if(discardDictation){ discardDictation=false; committedText=""; $("input").value=""; autoGrow(); return; }
+    // You tapped Stop → finish and send whatever was captured.
     const sec=(now()-recStart)/1000;
     const text=($("input").value||committedText).trim();
     committedText="";
     if(text){ $("input").value=""; autoGrow(); turn(text,{showUser:true, spokenSec:sec}); }
   };
+}
+function cancelDictation(){
+  if(!rec) return;
+  if(wantListening||listening){ discardDictation=true; wantListening=false; try{ rec.stop(); }catch(e){ if(rec.onend) rec.onend(); } }
 }
 function toggleMic(){
   if(!rec) return;
@@ -771,11 +842,15 @@ $("sendBtn").onclick=sendFromInput;
 $("micBtn").onclick=toggleMic;
 $("topicBtn").onclick=()=> turn("話題を一つ提案して、私に質問してください。", {showUser:false});
 $("newBtn").onclick=newConversation;
+$("helpBtn").onclick=()=>{ cancelDictation(); $("helpInput").value=""; $("helpStatus").style.display="none"; $("helpOverlay").classList.add("show"); setTimeout(()=>{ try{$("helpInput").focus();}catch(e){} },60); };
+$("helpClose").onclick=()=>$("helpOverlay").classList.remove("show");
+$("helpGo").onclick=()=>{ const t=$("helpInput").value.trim(); if(!t){ $("helpStatus").style.display="block"; $("helpStatus").className="status err"; $("helpStatus").textContent="Type what you want to say first."; return; } $("helpOverlay").classList.remove("show"); helpTranslate(t); };
+$("helpInput").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); $("helpGo").click(); } });
 const ta=$("input");
 ta.addEventListener("input",()=>{ ta.style.height="auto"; ta.style.height=Math.min(ta.scrollHeight,120)+"px"; });
 ta.addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendFromInput(); } });
 // close overlays on backdrop tap
-[["setOverlay"],["progOverlay"]].forEach(([id])=>{ $(id).addEventListener("click",e=>{ if(e.target===$(id)) $(id).classList.remove("show"); }); });
+[["setOverlay"],["progOverlay"],["helpOverlay"]].forEach(([id])=>{ $(id).addEventListener("click",e=>{ if(e.target===$(id)) $(id).classList.remove("show"); }); });
 
 render();
 </script>
