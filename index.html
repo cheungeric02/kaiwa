@@ -201,13 +201,14 @@
   <div class="modal">
     <button class="ib close" id="setClose">✕</button>
     <h2>⚙ Settings</h2>
-    <label>Gemini API key</label>
+    <label>AI provider</label>
+    <select id="provider">
+      <option value="gemini">Google Gemini — free, key from AI Studio</option>
+      <option value="openrouter">OpenRouter — free models, no card</option>
+    </select>
+    <label id="keyLabel">API key</label>
     <input type="password" id="apiKey" placeholder="AIza…" autocomplete="off">
-    <div class="note">
-      Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.
-      It's stored only in this browser. <b>Recommended:</b> in Google Cloud console, restrict the key to the website
-      <code>cheungeric02.github.io</code> (HTTP referrer) so it only works from this app.
-    </div>
+    <div class="note" id="keyNote"></div>
     <label>Model</label>
     <input type="text" id="model" placeholder="gemini-2.5-flash">
     <div class="note">Google renames models often. Tap <b>List my models</b> to see exactly what your key supports right now, then tap one to select it.</div>
@@ -263,9 +264,20 @@
 /* ============================ 会話 Kaiwa — main app ============================ */
 const LS = {
   theme:"kaiwa_theme", key:"kaiwa_gemini_key", model:"kaiwa_model",
+  provider:"kaiwa_provider", orkey:"kaiwa_or_key", ormodel:"kaiwa_or_model",
   rate:"kaiwa_tts_rate", speak:"kaiwa_autospeak", autosend:"kaiwa_autosend",
   furi:"kaiwa_furi", sync:"kaiwa_synckey", data:"kaiwa_data_v1"
 };
+const PROVIDERS = {
+  gemini: { label:"Google Gemini", keyLS:"kaiwa_gemini_key", modelLS:"kaiwa_model", defModel:"gemini-2.5-flash",
+    keyHint:"AIza…", getUrl:"https://aistudio.google.com/apikey",
+    note:"Key must start with <code>AIza</code>. Free, but Google's 2026 free tier is stingy — may rate-limit quickly." },
+  openrouter: { label:"OpenRouter", keyLS:"kaiwa_or_key", modelLS:"kaiwa_or_model", defModel:"meta-llama/llama-3.3-70b-instruct:free",
+    keyHint:"sk-or-…", getUrl:"https://openrouter.ai/keys",
+    note:"No card needed. Use models ending in <code>:free</code>. ~50 messages/day (1,000/day if you ever add $10 credit). Qwen models are strong at Japanese." }
+};
+const curProvider = () => localStorage.getItem(LS.provider) || "gemini";
+const curKey = () => localStorage.getItem(PROVIDERS[curProvider()].keyLS) || "";
 const $ = id => document.getElementById(id);
 const now = () => new Date().getTime();
 const todayStr = () => { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
@@ -291,7 +303,7 @@ function save(){ try{ localStorage.setItem(LS.data, JSON.stringify(data)); }catc
 /* ============================ rendering ============================ */
 function render(){
   const c = $("chatInner"); c.innerHTML="";
-  if(!localStorage.getItem(LS.key)){ c.appendChild(setupCard()); }
+  if(!curKey()){ c.appendChild(setupCard()); }
   else if(!data.msgs.length){ c.appendChild(welcomeCard()); }
 
   data.msgs.forEach((m,i)=>{
@@ -337,9 +349,9 @@ function render(){
 function setupCard(){
   const d=document.createElement("div"); d.className="sys-note";
   d.innerHTML=`<h3>ようこそ！ Welcome to 会話 👋</h3>
-   To start talking, add a free Gemini API key:
-   <ol><li>Get one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (free).</li>
-   <li>Tap the ⚙ button (top right) and paste it in.</li>
+   To start talking, add a free AI key:
+   <ol><li>Tap the ⚙ button (top right) and pick a <b>provider</b> — Google Gemini or OpenRouter (both free, no card).</li>
+   <li>Get a free key from that provider's link and paste it in, then tap <b>🔌 Test connection</b>.</li>
    <li>Then tap 🎤 and speak Japanese — I'll reply, read it aloud, and gently correct anything unnatural.</li></ol>`;
   return d;
 }
@@ -409,14 +421,48 @@ async function callGemini(extraUser){
   const cand = j.candidates && j.candidates[0];
   if(!cand){ throw new Error(j.promptFeedback?("Blocked: "+(j.promptFeedback.blockReason||"safety")):"Empty response."); }
   const txt = cand.content && cand.content.parts && cand.content.parts.map(p=>p.text||"").join("");
-  try{ return JSON.parse(txt); }
-  catch(e){ return { reply:txt||"（すみません、もう一度お願いします。）", reply_furigana:"", reply_romaji:"", reply_en:"", corrections:[] }; }
+  return parseAIJson(txt);
 }
+
+const OR_JSON_HINT = "\n\nReturn ONLY a valid JSON object (no markdown, no code fences, no extra text) with EXACTLY these keys: \"reply\", \"reply_furigana\", \"reply_romaji\", \"reply_en\", and \"corrections\" (an array; each item = {\"original\",\"corrected\",\"corrected_romaji\",\"corrected_en\",\"why\"}). If there is nothing to correct, use an empty array for \"corrections\".";
+async function callOpenRouter(extraUser){
+  const key = localStorage.getItem(LS.orkey);
+  const model = (localStorage.getItem(LS.ormodel) || PROVIDERS.openrouter.defModel).trim();
+  if(!key) throw new Error("NO_KEY");
+  const messages = [{ role:"system", content: SYSTEM + OR_JSON_HINT }];
+  data.msgs.forEach(m=> messages.push({ role: m.role==="ai"?"assistant":"user", content:m.ja }));
+  if(extraUser) messages.push({ role:"user", content:extraUser });
+  const body = { model, messages, temperature:0.85, response_format:{type:"json_object"} };
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "Authorization":"Bearer "+key, "HTTP-Referer":location.origin, "X-Title":"Kaiwa" },
+    body:JSON.stringify(body)
+  });
+  if(!res.ok){
+    let msg="HTTP "+res.status; try{ const jj=await res.json(); if(jj.error&&jj.error.message) msg=jj.error.message; }catch(e){}
+    if(res.status===429) msg="Rate limit reached (free tier). Wait a moment and try again.";
+    throw new Error(msg);
+  }
+  const j = await res.json();
+  const txt = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+  return parseAIJson(txt);
+}
+
+function parseAIJson(txt){
+  const fb = { reply:(txt||"（すみません、もう一度お願いします。）"), reply_furigana:"", reply_romaji:"", reply_en:"", corrections:[] };
+  if(!txt) return fb;
+  let s=String(txt).trim().replace(/^```(?:json)?/i,"").replace(/```$/,"").trim();
+  try{ return JSON.parse(s); }catch(e){}
+  const m=s.match(/\{[\s\S]*\}/); if(m){ try{ return JSON.parse(m[0]); }catch(e){} }
+  return fb;
+}
+
+function callAI(extraUser){ return curProvider()==="openrouter" ? callOpenRouter(extraUser) : callGemini(extraUser); }
 
 /* ============================ conversation turns ============================ */
 async function turn(userText, {showUser=true, spokenSec=0}={}){
   if(busy) return;
-  if(!localStorage.getItem(LS.key)){ openSettings(); return; }
+  if(!curKey()){ openSettings(); return; }
   busy=true; $("sendBtn").disabled=true;
   let userMsg=null;
   if(showUser){
@@ -427,7 +473,7 @@ async function turn(userText, {showUser=true, spokenSec=0}={}){
   }
   showTyping(true);
   try{
-    const obj = await callGemini(showUser?null:userText);
+    const obj = await callAI(showUser?null:userText);
     showTyping(false);
     if(showUser && obj.corrections && obj.corrections.length){
       userMsg.corr = obj.corrections;
@@ -500,7 +546,7 @@ else {
 function toggleMic(){
   if(!rec) return;
   if(listening){ rec.stop(); return; }
-  if(!localStorage.getItem(LS.key)){ openSettings(); return; }
+  if(!curKey()){ openSettings(); return; }
   try{ speechSynthesis.cancel(); }catch(e){}
   try{ rec.start(); }catch(e){}
 }
@@ -589,64 +635,98 @@ $("themeBtn").onclick=()=>{ const cur=document.documentElement.getAttribute("dat
 $("furiBtn").onclick=()=>{ showFuri=!showFuri; localStorage.setItem(LS.furi,showFuri?"1":"0"); $("furiBtn").classList.toggle("on",showFuri); render(); };
 $("furiBtn").classList.toggle("on",showFuri);
 
+function applyProviderUI(p){
+  const meta=PROVIDERS[p]||PROVIDERS.gemini;
+  $("keyLabel").textContent = meta.label+" API key";
+  $("apiKey").placeholder = meta.keyHint;
+  $("keyNote").innerHTML = `Get a free key at <a href="${meta.getUrl}" target="_blank" rel="noopener">${meta.getUrl.replace(/^https?:\/\//,"")}</a>. Stored only in this browser. ${meta.note}`;
+  $("model").placeholder = meta.defModel;
+  $("apiKey").value = localStorage.getItem(meta.keyLS)||"";
+  $("model").value = localStorage.getItem(meta.modelLS)||"";
+  $("modelList").style.display="none"; $("testStatus").style.display="none";
+}
 function openSettings(){
-  $("apiKey").value=localStorage.getItem(LS.key)||"";
-  $("model").value=localStorage.getItem(LS.model)||"gemini-2.5-flash";
+  const p=curProvider(); $("provider").value=p; applyProviderUI(p);
   $("ttsRate").value=ttsRate; $("autoSpeak").checked=autoSpeak; $("autoSend").checked=autoSend;
   $("syncKey").value=localStorage.getItem(LS.sync)||"";
   $("syncToggle").textContent = (window.__kaiwaCloud&&window.__kaiwaCloud.connected)?"Turn off":"Turn on";
   $("setOverlay").classList.add("show");
 }
+$("provider").onchange=()=> applyProviderUI($("provider").value);
 $("setBtn").onclick=openSettings;
 $("setClose").onclick=()=>$("setOverlay").classList.remove("show");
 $("setSave").onclick=()=>{
-  localStorage.setItem(LS.key, $("apiKey").value.trim());
-  localStorage.setItem(LS.model, $("model").value.trim()||"gemini-2.5-flash");
+  const p=$("provider").value; const meta=PROVIDERS[p]||PROVIDERS.gemini;
+  localStorage.setItem(LS.provider,p);
+  localStorage.setItem(meta.keyLS, $("apiKey").value.trim());
+  localStorage.setItem(meta.modelLS, $("model").value.trim()||meta.defModel);
   ttsRate=parseFloat($("ttsRate").value)||0.95; localStorage.setItem(LS.rate,ttsRate);
   autoSpeak=$("autoSpeak").checked; localStorage.setItem(LS.speak,autoSpeak?"1":"0");
   autoSend=$("autoSend").checked; localStorage.setItem(LS.autosend,autoSend?"1":"0");
   $("setOverlay").classList.remove("show"); render();
 };
+function renderModelChips(models, starRe){
+  const box=$("modelList");
+  box.innerHTML='<div class="note" style="margin:0 0 6px">Tap a model to select it &nbsp;(⭐ = good picks):</div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
+    models.map(n=>`<button type="button" class="chip modelChip${n===$("model").value?" on":""}" data-m="${esc(n)}">${starRe.test(n)?"⭐ ":""}${esc(n)}</button>`).join("")+
+    '</div>';
+  box.querySelectorAll('.modelChip').forEach(b=> b.onclick=()=>{ $("model").value=b.getAttribute("data-m"); box.querySelectorAll('.modelChip').forEach(x=>x.classList.remove('on')); b.classList.add('on'); });
+}
 $("loadModels").onclick=async ()=>{
-  const key=$("apiKey").value.trim();
+  const p=$("provider").value; const key=$("apiKey").value.trim();
   const box=$("modelList"); box.style.display="block";
   if(!key){ box.innerHTML='<div class="status err">✗ Enter your API key first.</div>'; return; }
   box.innerHTML='<div class="status">Loading the models your key can use…</div>';
   try{
-    const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}&pageSize=200`);
-    if(!res.ok){ let m="HTTP "+res.status; try{ const j=await res.json(); if(j.error&&j.error.message) m=j.error.message; }catch(e){} box.innerHTML='<div class="status err">✗ '+esc(m)+'</div>'; return; }
-    const j=await res.json();
-    let models=(j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes("generateContent"))
-      .map(m=>(m.name||"").replace(/^models\//,"")).filter(n=>/gemini/i.test(n) && !/embedding|imagen|image|aqa|vision/i.test(n));
-    // good free-tier chat picks first (flash-lite, then flash), newest-ish first
-    const score=n=>(/flash-lite/i.test(n)?0:/flash/i.test(n)?1:/pro/i.test(n)?3:2);
-    models.sort((a,b)=> score(a)-score(b) || b.localeCompare(a));
-    if(!models.length){ box.innerHTML='<div class="status err">No chat models found for this key. Check the key at aistudio.google.com/apikey.</div>'; return; }
-    box.innerHTML='<div class="note" style="margin:0 0 6px">Tap a model to select it &nbsp;(⭐ = lighter on the free-tier limits):</div>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
-      models.map(n=>`<button type="button" class="chip modelChip${n===$("model").value?" on":""}" data-m="${esc(n)}">${/flash/i.test(n)?"⭐ ":""}${esc(n)}</button>`).join("")+
-      '</div>';
-    box.querySelectorAll('.modelChip').forEach(b=> b.onclick=()=>{ $("model").value=b.getAttribute("data-m"); box.querySelectorAll('.modelChip').forEach(x=>x.classList.remove('on')); b.classList.add('on'); });
+    if(p==="openrouter"){
+      const res=await fetch("https://openrouter.ai/api/v1/models",{ headers:{ "Authorization":"Bearer "+key } });
+      if(!res.ok){ let m="HTTP "+res.status; try{ const j=await res.json(); if(j.error&&j.error.message) m=j.error.message; }catch(e){} box.innerHTML='<div class="status err">✗ '+esc(m)+'</div>'; return; }
+      const j=await res.json();
+      let models=(j.data||[]).map(m=>m.id).filter(id=>/:free$/i.test(id));
+      // Qwen/Llama first (good at Japanese), then the rest, alphabetical
+      const score=n=>(/qwen/i.test(n)?0:/llama/i.test(n)?1:2);
+      models.sort((a,b)=> score(a)-score(b) || a.localeCompare(b));
+      if(!models.length){ box.innerHTML='<div class="status err">No free models found. Check the key at openrouter.ai/keys.</div>'; return; }
+      renderModelChips(models.slice(0,50), /qwen|llama/i);
+    } else {
+      const res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}&pageSize=200`);
+      if(!res.ok){ let m="HTTP "+res.status; try{ const j=await res.json(); if(j.error&&j.error.message) m=j.error.message; }catch(e){} box.innerHTML='<div class="status err">✗ '+esc(m)+'</div>'; return; }
+      const j=await res.json();
+      let models=(j.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes("generateContent"))
+        .map(m=>(m.name||"").replace(/^models\//,"")).filter(n=>/gemini/i.test(n) && !/embedding|imagen|image|aqa|vision/i.test(n));
+      const score=n=>(/flash-lite/i.test(n)?0:/flash/i.test(n)?1:/pro/i.test(n)?3:2);
+      models.sort((a,b)=> score(a)-score(b) || b.localeCompare(a));
+      if(!models.length){ box.innerHTML='<div class="status err">No chat models found for this key.</div>'; return; }
+      renderModelChips(models, /flash/i);
+    }
   }catch(e){ box.innerHTML='<div class="status err">✗ '+esc(e.message||e)+'</div>'; }
 };
 $("testBtn").onclick=async ()=>{
-  const key=$("apiKey").value.trim();
-  const model=$("model").value.trim()||"gemini-2.5-flash";
+  const p=$("provider").value; const key=$("apiKey").value.trim();
+  const model=$("model").value.trim()||PROVIDERS[p].defModel;
   const st=$("testStatus"); st.style.display="block"; st.className="status"; st.textContent="Testing…";
   if(!key){ st.className="status err"; st.textContent="✗ Enter an API key first."; return; }
   $("testBtn").disabled=true;
   try{
-    const url=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
-    const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{role:"user",parts:[{text:"Reply with just: OK"}]}]})});
+    let res;
+    if(p==="openrouter"){
+      res=await fetch("https://openrouter.ai/api/v1/chat/completions",{ method:"POST",
+        headers:{ "Content-Type":"application/json","Authorization":"Bearer "+key,"HTTP-Referer":location.origin,"X-Title":"Kaiwa" },
+        body:JSON.stringify({ model, messages:[{role:"user",content:"Reply with just: OK"}], max_tokens:5 }) });
+    } else {
+      res=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,{
+        method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{role:"user",parts:[{text:"Reply with just: OK"}]}]}) });
+    }
     if(!res.ok){
       let m="HTTP "+res.status; try{ const j=await res.json(); if(j.error&&j.error.message) m=j.error.message; }catch(e){}
-      if(res.status===429){ st.className="status on"; st.textContent="✓ Key works — but you've hit the free-tier rate limit. Wait a moment."; }
+      if(res.status===429){ st.className="status on"; st.textContent="✓ Key works — but you've hit the free-tier rate limit. Wait a moment, or try another model."; }
       else { st.className="status err"; st.textContent="✗ "+m; }
       return;
     }
     await res.json();
-    st.className="status on"; st.textContent="✓ Connected! Key and model “"+model+"” work. Tap Save to keep them.";
-  }catch(e){ st.className="status err"; st.textContent="✗ Network error: "+(e.message||e); }
+    st.className="status on"; st.textContent="✓ Connected! “"+model+"” works. Tap Save to keep it.";
+  }catch(e){ st.className="status err"; st.textContent="✗ Network error: "+(e.message||e)+" (some providers block direct browser calls)"; }
   finally{ $("testBtn").disabled=false; }
 };
 $("syncToggle").onclick=()=>{
