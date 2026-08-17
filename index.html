@@ -728,14 +728,17 @@ else {
   rec=new SR(); rec.lang="ja-JP"; rec.interimResults=true; rec.maxAlternatives=1; rec.continuous=true;
   rec.onstart=()=>{ listening=true; sessionText=""; setMicUI(true); };
   rec.onresult=(e)=>{
-    // Rebuild this session each event; collapse adjacent duplicate final segments; strip stray spaces (JP needs none).
-    let interim="", finals="", prev=null;
+    // Rebuild this session each event. Strip stray spaces (JP needs none) and OVERLAP-MERGE every piece
+    // together — Android re-recognizes just-finalized audio as a fresh interim, so a single event can hold
+    // a final "こんにちは" AND an interim "こんにちは"; naive concatenation is what produced the doubling.
+    let finals="", interim="", prevFinal=null;
     for(let i=0;i<e.results.length;i++){
-      const r=e.results[i], t=r[0].transcript;
-      if(r.isFinal){ if(t!==prev) finals+=t; prev=t; }
-      else interim+=t;
+      const r=e.results[i], t=(r[0].transcript||"").replace(/\s+/g,"");
+      if(!t) continue;
+      if(r.isFinal){ if(t!==prevFinal) finals=mergeText(finals,t); prevFinal=t; }
+      else interim=mergeText(interim,t);
     }
-    sessionText=(finals+interim).replace(/\s+/g,"");
+    sessionText=mergeText(finals, interim);
     $("input").value = mergeText(priorText, sessionText); autoGrow();
   };
   rec.onerror=(e)=>{
